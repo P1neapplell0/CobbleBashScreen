@@ -1,0 +1,40 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="P1nero"
+description='''
+An interface enhancement add-on for CobbleBash. It adds a compact, technology-themed
+Training Simulator screen with permanent disc unlocks, gym and Elite Four tabs,
+challenge confirmation, smooth scrolling, and player challenge statistics while
+leaving CobbleBash's registrations and public API intact.
+'''
+
+[[mixins]]
+config="cobblebash_screen.mixins.json"
+
+[[dependencies.${mod_id}]]
+modId="neoforge"
+type="required"
+versionRange="[${neo_version},)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="minecraft"
+type="required"
+versionRange="${minecraft_version_range}"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="cobblebash"
+type="required"
+reason="CobbleBash Screen enhances the CobbleBash Training Simulator."
+versionRange="[0.1.3,0.1.4)"
+ordering="AFTER"
+side="BOTH"
