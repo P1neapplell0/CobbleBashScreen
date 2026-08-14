@@ -1,6 +1,6 @@
 # CobbleBash Screen
 
-CobbleBash Screen is a Minecraft 1.21.1 NeoForge add-on for CobbleBash 0.1.3. It replaces the Training Simulator interaction with a compact, technology-themed screen without replacing CobbleBash classes, registrations, or resources.
+CobbleBash Screen is a NeoForge add-on for CobbleBash. It replaces the Training Simulator interaction with a compact, technology-themed screen without replacing CobbleBash classes, registrations, or resources.
 
 ## Features
 
@@ -16,12 +16,11 @@ CobbleBash Screen is a Minecraft 1.21.1 NeoForge add-on for CobbleBash 0.1.3. It
 
 ## Requirements
 
-- Minecraft 1.21.1
-- NeoForge 21.1.234 or newer
-- CobbleBash 0.1.3
+- A compatible Minecraft and NeoForge installation
+- CobbleBash
 - CobbleBash's own required dependencies
 
-The development build expects `libs/cobblebash-0.1.3.jar` and the other local dependency jars declared in `build.gradle`.
+The development build expects the local CobbleBash dependency and other dependency jars declared in `build.gradle`.
 
 ## Integration API
 
@@ -70,7 +69,7 @@ Use Java 21 and run:
 ./gradlew build
 ```
 
-The output is `build/libs/cobblebash_screen-0.1.0.jar`.
+The output is a versioned JAR in `build/libs/`.
 
 ## Author
 
