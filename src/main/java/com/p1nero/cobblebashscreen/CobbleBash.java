@@ -50,18 +50,6 @@ public final class CobbleBash {
     }
 
     private static void onAddPackFinders(AddPackFindersEvent event) {
-        if (event.getPackType() == PackType.CLIENT_RESOURCES) {
-            event.addPackFinders(
-                    ResourceLocation.fromNamespaceAndPath(MOD_ID, "packs/cobblebash_dialogue_resourcepack"),
-                    PackType.CLIENT_RESOURCES,
-                    Component.literal("CobbleBash - NPC Dialogue Localization"),
-                    PackSource.BUILT_IN,
-                    true,
-                    Pack.Position.TOP
-            );
-            LOGGER.info("Registered built-in CobbleBash dialogue resource pack");
-        }
-
         if (event.getPackType() == PackType.SERVER_DATA) {
             event.addPackFinders(
                     ResourceLocation.fromNamespaceAndPath(MOD_ID, "packs/cobblebash_dialogue_datapack"),

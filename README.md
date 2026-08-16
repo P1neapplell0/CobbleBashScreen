@@ -59,7 +59,7 @@ The add-on opens its menu through NeoForge's block interaction event and calls C
 
 Player UI progress is stored on each player in the serializable `cobblebash_screen:training_simulator` NeoForge attachment. The attachment is copied when the player respawns after death. Screen values remain server-authoritative and are synchronized through the menu rather than exposing the attachment to clients.
 
-The add-on owns the `cobblebash_screen` registry namespace. Its `assets/cobblebash` resources only provide missing Simplified Chinese translations for CobbleBash and do not replace CobbleBash registrations or gameplay data.
+The add-on owns the `cobblebash_screen` registry namespace. Its `assets/cobblebash` resources provide Simplified Chinese translations that are still missing from CobbleBash. A built-in server data pack replaces only trainer display and dialogue fields with CobbleBash's native translation keys; trainer teams and battle data remain unchanged.
 
 ## Build
 
