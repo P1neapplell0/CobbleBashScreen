@@ -5,7 +5,8 @@
   "compatibilityLevel": "JAVA_21",
   "refmap": "cobblebash_screen.refmap.json",
   "mixins": [
-    "GymCommandMixin"
+    "GymCommandMixin",
+    "GymTrainerDialogueMixin"
   ],
   "injectors": {
     "defaultRequire": 1
