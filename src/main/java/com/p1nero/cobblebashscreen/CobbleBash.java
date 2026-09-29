@@ -4,17 +4,11 @@ import com.p1nero.cobblebashscreen.simulator.TrainingSimulatorMenu;
 import com.p1nero.cobblebashscreen.progress.TrainingSimulatorData;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.packs.PackType;
-import net.minecraft.server.packs.repository.Pack;
-import net.minecraft.server.packs.repository.PackSource;
 import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.inventory.MenuType;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.attachment.AttachmentType;
-import net.neoforged.neoforge.event.AddPackFindersEvent;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -46,20 +40,5 @@ public final class CobbleBash {
     public CobbleBash(IEventBus modEventBus) {
         MENUS.register(modEventBus);
         ATTACHMENTS.register(modEventBus);
-        modEventBus.addListener(CobbleBash::onAddPackFinders);
-    }
-
-    private static void onAddPackFinders(AddPackFindersEvent event) {
-        if (event.getPackType() == PackType.SERVER_DATA) {
-            event.addPackFinders(
-                    ResourceLocation.fromNamespaceAndPath(MOD_ID, "packs/cobblebash_dialogue_datapack"),
-                    PackType.SERVER_DATA,
-                    Component.literal("CobbleBash - NPC Dialogue Localization Data"),
-                    PackSource.BUILT_IN,
-                    true,
-                    Pack.Position.TOP
-            );
-            LOGGER.info("Registered built-in CobbleBash dialogue data pack");
-        }
     }
 }
