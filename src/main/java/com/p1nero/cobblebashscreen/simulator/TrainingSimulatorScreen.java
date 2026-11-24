@@ -3,62 +3,83 @@ package com.p1nero.cobblebashscreen.simulator;
 import com.nore.cobblebash.CobbleBash;
 import com.nore.cobblebash.elitefour.EliteFourMember;
 import com.nore.cobblebash.gym.GymType;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
+import org.lwjgl.glfw.GLFW;
 
 public class TrainingSimulatorScreen extends AbstractContainerScreen<TrainingSimulatorMenu> {
     private static final String TRANSLATION_PREFIX = "screen.cobblebash_screen.simulator.";
+    private static final GymType[] GYMS = GymType.values();
+    private static final int ELITE = TrainingSimulatorMenu.ELITE_FOUR_BUTTON_ID;
+
     private static final int PANEL_WIDTH = 320;
     private static final int PANEL_HEIGHT = 222;
-    private static final int GRID_TOP = 58;
-    private static final int CARD_WIDTH = 88;
-    private static final int CARD_HEIGHT = 40;
-    private static final int CARD_GAP = 5;
-    private static final int ROW_HEIGHT = CARD_HEIGHT + CARD_GAP;
+    private static final Rect CLOSE = new Rect(288, 9, 22, 22);
+    private static final Rect GYM_TAB = new Rect(12, 42, 146, 21);
+    private static final Rect ELITE_TAB = new Rect(162, 42, 146, 21);
+    private static final Rect CONTENT = new Rect(12, 68, 296, 118);
+    private static final Rect GRID = new Rect(16, 71, 282, 112);
+    private static final Rect TRACK = new Rect(300, GRID.y(), 5, GRID.height());
+    private static final Rect ELITE_ACTION = new Rect(190, 158, 109, 21);
+    private static final Rect DIALOG = new Rect(44, 59, 232, 104);
+    private static final Rect CANCEL = new Rect(56, 129, 101, 23);
+    private static final Rect ENTER = new Rect(163, 129, 101, 23);
     private static final int COLUMNS = 3;
-    private static final int VISIBLE_ROWS = 3;
-    private static final int SCROLL_TRACK_X = 304;
-    private static final int SCROLL_TRACK_HEIGHT = 130;
-    private static final int SCROLL_THUMB_HEIGHT = 58;
+    private static final int CARD_WIDTH = 90;
+    private static final int CARD_HEIGHT = 34;
+    private static final int CARD_GAP = 6;
+    private static final int ROW_HEIGHT = CARD_HEIGHT + 5;
+    private static final int TOTAL_ROWS = (GYMS.length + COLUMNS - 1) / COLUMNS;
+    private static final int FULL_GRID_HEIGHT = (TOTAL_ROWS - 1) * ROW_HEIGHT + CARD_HEIGHT;
+    private static final int MAX_SCROLL = Math.max(0, FULL_GRID_HEIGHT - GRID.height());
+    private static final int THUMB_HEIGHT = Math.min(TRACK.height(),
+            Math.max(12, TRACK.height() * GRID.height() / FULL_GRID_HEIGHT));
     private static final double WHEEL_SCROLL_PIXELS = 24.0D;
     private static final double SCROLL_RESPONSE = 18.0D;
-    private static final SoundEvent GUI_CLICK = SoundEvent.createVariableRangeEvent(
-            ResourceLocation.fromNamespaceAndPath("cobblemon", "gui.click")
-    );
-    private static final SoundEvent PC_UNLOCK = SoundEvent.createVariableRangeEvent(
-            ResourceLocation.fromNamespaceAndPath("cobblemon", "pc.wallpaper.unlock")
-    );
 
-    private Tab tab = Tab.GYMS;
+    // Ore UI surface and action colors, adapted to Minecraft's integer GUI coordinates.
+    private static final int BORDER = 0xFF1E1E1F;
+    private static final int HEADER = 0xFF313233;
+    private static final int WELL = 0xFF242425;
+    private static final int SURFACE = 0xFF48494A;
+    private static final int DIVIDER = 0xFF58585A;
+    private static final int WHITE = 0xFFF4F6F9;
+    private static final int MUTED = 0xFFD0D1D4;
+    private static final int DIM = 0xFFB1B2B5;
+    private static final int GREEN = 0xFFA0E081;
+    private static final int GOLD = 0xFFFFD479;
+    private static final SoundEvent GUI_CLICK = SoundEvent.createVariableRangeEvent(
+            ResourceLocation.fromNamespaceAndPath("cobblemon", "gui.click"));
+    private static final SoundEvent PC_UNLOCK = SoundEvent.createVariableRangeEvent(
+            ResourceLocation.fromNamespaceAndPath("cobblemon", "pc.wallpaper.unlock"));
+
+    private boolean eliteTab;
     private double scrollOffset;
     private double targetScrollOffset;
     private long lastRenderNanos;
+    private int scrollbarGrabOffset = -1;
     private int pendingChallenge = -1;
     private boolean openingSoundPlayed;
-    private boolean draggingScroll;
     private int observedUnlockRevision;
 
     public TrainingSimulatorScreen(TrainingSimulatorMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
         imageWidth = PANEL_WIDTH;
         imageHeight = PANEL_HEIGHT;
-        titleLabelY = 10000;
-        inventoryLabelY = 10000;
     }
 
     @Override
     protected void init() {
         super.init();
         observedUnlockRevision = menu.getUnlockRevision();
+        scrollbarGrabOffset = -1;
         if (!openingSoundPlayed) {
             openingSoundPlayed = true;
             playGuiClick();
@@ -75,124 +96,226 @@ public class TrainingSimulatorScreen extends AbstractContainerScreen<TrainingSim
     }
 
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics, mouseX, mouseY, partialTick);
-        super.render(graphics, mouseX, mouseY, partialTick);
-        renderTooltip(graphics, mouseX, mouseY);
-    }
-
-    @Override
     protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
         updateSmoothScroll();
-        drawPanel(graphics);
-        drawTabs(graphics, mouseX, mouseY);
-        if (tab == Tab.GYMS) {
-            drawGymGrid(graphics, mouseX, mouseY);
+        int x = pendingChallenge < 0 ? mouseX - leftPos : -1;
+        int y = pendingChallenge < 0 ? mouseY - topPos : -1;
+
+        drawFrame(graphics, new Rect(0, 0, PANEL_WIDTH, PANEL_HEIGHT));
+        fill(graphics, 2, 2, PANEL_WIDTH - 4, 35, HEADER);
+        fill(graphics, 2, 36, PANEL_WIDTH - 4, 1, BORDER);
+        label(graphics, text("title"), 12, 9, 268, WHITE, true);
+        label(graphics, text("subtitle"), 12, 22, 268, MUTED, false);
+        drawButtonFace(graphics, CLOSE, ButtonStyle.NEUTRAL, CLOSE.contains(x, y));
+        drawCross(graphics, CLOSE.x() + 8, CLOSE.y() + 7);
+
+        drawTab(graphics, GYM_TAB, text("tab.gyms"), !eliteTab, x, y);
+        drawTab(graphics, ELITE_TAB, text("tab.elite_four"), eliteTab, x, y);
+        drawWell(graphics, CONTENT);
+        if (eliteTab) {
+            drawEliteFour(graphics, x, y);
         } else {
-            drawEliteFour(graphics, mouseX, mouseY);
+            drawGymGrid(graphics, x, y);
         }
-        drawStatusBar(graphics);
+        drawFooter(graphics);
         if (pendingChallenge >= 0) {
-            drawConfirmation(graphics, mouseX, mouseY);
+            drawConfirmation(graphics, mouseX - leftPos, mouseY - topPos);
         }
     }
 
     @Override
     protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
-        graphics.drawString(font, text("title"), 18, 13, 0xEAFBFF, false);
-        graphics.drawString(font, text("subtitle"), 18, 25, 0x69CDE8, false);
+        // The title and dialog are part of the surface drawn by renderBg.
+    }
+
+    private void drawTab(GuiGraphics graphics, Rect bounds, Component title, boolean selected, int mouseX, int mouseY) {
+        if (selected) {
+            drawWell(graphics, bounds);
+            fill(graphics, bounds.x() + 1, bounds.bottom() - 3, bounds.width() - 2, 2, 0xFF6CC349);
+            centeredLabel(graphics, title, bounds, bounds.y() + 6, WHITE, true);
+        } else {
+            drawButton(graphics, bounds, title, ButtonStyle.NEUTRAL, mouseX, mouseY);
+        }
+    }
+
+    private Rect cardBounds(int index) {
+        return new Rect(GRID.x() + index % COLUMNS * (CARD_WIDTH + CARD_GAP),
+                GRID.y() + index / COLUMNS * ROW_HEIGHT - (int) Math.round(scrollOffset), CARD_WIDTH, CARD_HEIGHT);
+    }
+
+    private void drawGymGrid(GuiGraphics graphics, int mouseX, int mouseY) {
+        boolean pointerInGrid = GRID.contains(mouseX, mouseY) && scrollbarGrabOffset < 0;
+        graphics.enableScissor(leftPos + GRID.x(), topPos + GRID.y(), leftPos + GRID.right(), topPos + GRID.bottom());
+        for (int index = 0; index < GYMS.length; index++) {
+            Rect card = cardBounds(index);
+            if (card.bottom() > GRID.y() && card.y() < GRID.bottom()) {
+                drawGymCard(graphics, index, card, pointerInGrid && card.contains(mouseX, mouseY));
+            }
+        }
+        graphics.disableScissor();
+
+        drawWell(graphics, TRACK);
+        if (MAX_SCROLL > 0) {
+            drawButtonFace(graphics, thumbBounds(), ButtonStyle.SECONDARY,
+                    scrollbarGrabOffset >= 0 || TRACK.contains(mouseX, mouseY));
+        }
+    }
+
+    private void drawGymCard(GuiGraphics graphics, int index, Rect card, boolean hovered) {
+        GymType type = GYMS[index];
+        ChallengeState state = challengeState(index);
+        int x = card.x();
+        int y = card.y();
+        drawButtonFace(graphics, card, state == ChallengeState.LOCKED ? ButtonStyle.DISABLED : ButtonStyle.NEUTRAL,
+                hovered);
+        drawWell(graphics, new Rect(x + 4, y + 3, 19, 19));
+        graphics.renderItem(new ItemStack(CobbleBash.TRAINING_DISKS.get(type).get()), leftPos + x + 5, topPos + y + 4);
+        fill(graphics, x + 4, y + 20, 19, 1, typeColor(type));
+        label(graphics, text("gym_name." + type.getId()), x + 27, y + 5, card.width() - 32, WHITE, true);
+
+        Component clears = text("clear_count", menu.getGymClearCount(index));
+        int clearsWidth = font.width(clears);
+        label(graphics, clears, card.right() - 5 - clearsWidth, y + 15, clearsWidth, DIM, false);
+        if (menu.hasCompleted(index)) {
+            drawCheck(graphics, x + 28, y + 16, GREEN);
+        }
+        Component action = text(state == ChallengeState.LOCKED ? "no_disc" : state.label);
+        label(graphics, action, x + 5, y + 23, card.width() - 10, state.color, false);
+    }
+
+    private void drawEliteFour(GuiGraphics graphics, int mouseX, int mouseY) {
+        drawWell(graphics, new Rect(20, 75, 24, 24));
+        graphics.renderItem(new ItemStack(CobbleBash.ELITE_FOUR_TRAINING_DISK.get()), leftPos + 24, topPos + 79);
+        label(graphics, text("elite_title"), 50, 77, 245, WHITE, true);
+        label(graphics, text("completed_count", menu.getCompletedCount(), GYMS.length), 50, 89, 245, MUTED, false);
+        var members = EliteFourMember.ordered();
+        for (int index = 0; index < members.size(); index++) {
+            int x = 20 + index % 2 * 142;
+            int y = 105 + index / 2 * 22;
+            drawButtonFace(graphics, new Rect(x, y, 137, 18), ButtonStyle.NEUTRAL, false);
+            label(graphics, text("elite_member." + members.get(index).getId()), x + 6, y + 4, 125, MUTED, false);
+        }
+
+        ChallengeState state = challengeState(ELITE);
+        boolean gated = menu.getCompletedCount() < GYMS.length;
+        Component status = gated ? text("requires_gyms", GYMS.length) : switch (state) {
+            case CHALLENGE -> text("unlocked");
+            case UNLOCK -> text("disc_ready");
+            case LOCKED -> text("no_elite_disc");
+        };
+        label(graphics, status, 20, 164, ELITE_ACTION.x() - 26, state.color, false);
+        drawButton(graphics, ELITE_ACTION, text(state.label), switch (state) {
+            case CHALLENGE -> ButtonStyle.PRIMARY;
+            case UNLOCK -> ButtonStyle.SECONDARY;
+            case LOCKED -> ButtonStyle.DISABLED;
+        }, mouseX, mouseY);
+    }
+
+    private void drawFooter(GuiGraphics graphics) {
+        drawWell(graphics, new Rect(12, 191, 296, 24));
+        int completed = menu.getCompletedCount();
+        label(graphics, text("completed_count", completed, GYMS.length), 19, 195, 144, WHITE, false);
+        drawWell(graphics, new Rect(19, 206, 138, 6));
+        int progress = 136 * Mth.clamp(completed, 0, GYMS.length) / GYMS.length;
+        if (progress > 0) {
+            fill(graphics, 20, 207, progress, 4, 0xFF3C8527);
+            fill(graphics, 20, 207, progress, 1, 0xFF6CC349);
+        }
+        fill(graphics, 165, 195, 1, 16, DIVIDER);
+        label(graphics, text("challenge_count", menu.getChallengesStarted()), 173, 195, 129, WHITE, false);
+        boolean active = menu.hasActiveChallenge();
+        fill(graphics, 173, 207, 4, 4, active ? GOLD : DIM);
+        label(graphics, text(active ? "active" : "standby"), 181, 205, 121, active ? GOLD : MUTED, false);
+    }
+
+    private void drawConfirmation(GuiGraphics graphics, int mouseX, int mouseY) {
+        graphics.pose().pushPose();
+        graphics.pose().translate(0, 0, 300);
+        fill(graphics, 0, 0, PANEL_WIDTH, PANEL_HEIGHT, 0xB0101011);
+        drawFrame(graphics, DIALOG);
+        fill(graphics, DIALOG.x() + 2, DIALOG.y() + 2, DIALOG.width() - 4, 21, HEADER);
+        fill(graphics, DIALOG.x() + 2, DIALOG.y() + 22, DIALOG.width() - 4, 1, BORDER);
+        centeredLabel(graphics, text("confirm_title"), DIALOG, 68, WHITE, true);
+        Component target = pendingChallenge == ELITE ? text("elite_title")
+                : text("gym_target", text("gym_name." + GYMS[pendingChallenge].getId()));
+        centeredLabel(graphics, target, DIALOG, 94, GREEN, true);
+        centeredLabel(graphics, text("confirm_enter"), DIALOG, 108, MUTED, false);
+        drawButton(graphics, CANCEL, Component.translatable("gui.cancel"), ButtonStyle.SECONDARY, mouseX, mouseY);
+        drawButton(graphics, ENTER, text("enter"), canConfirm() ? ButtonStyle.PRIMARY : ButtonStyle.DISABLED,
+                mouseX, mouseY);
+        graphics.pose().popPose();
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button != 0) {
+        double x = mouseX - leftPos;
+        double y = mouseY - topPos;
+        if (pendingChallenge >= 0) {
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                if (CANCEL.contains(x, y)) {
+                    dismissConfirmation();
+                } else if (ENTER.contains(x, y)) {
+                    confirmChallenge();
+                }
+            }
+            return true;
+        }
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             return super.mouseClicked(mouseX, mouseY, button);
         }
-
-        int x = (int) mouseX - leftPos;
-        int y = (int) mouseY - topPos;
-        if (pendingChallenge >= 0) {
-            if (inside(x, y, 93, 155, 64, 20)) {
-                playGuiClick();
-                pendingChallenge = -1;
-                return true;
-            }
-            if (inside(x, y, 163, 155, 64, 20) && canChallenge(pendingChallenge)) {
-                playGuiClick();
-                minecraft.gameMode.handleInventoryButtonClick(menu.containerId, pendingChallenge);
-                pendingChallenge = -1;
-                return true;
-            }
-            return true;
-        }
-
-        if (inside(x, y, 68, 39, 82, 15)) {
+        if (CLOSE.contains(x, y)) {
             playGuiClick();
-            tab = Tab.GYMS;
+            onClose();
             return true;
         }
-        if (inside(x, y, 158, 39, 94, 15)) {
-            playGuiClick();
-            tab = Tab.ELITE_FOUR;
-            return true;
-        }
-
-        if (tab == Tab.GYMS) {
-            if (inside(x, y, SCROLL_TRACK_X - 2, GRID_TOP, 8, SCROLL_TRACK_HEIGHT)) {
-                draggingScroll = true;
-                updateScrollFromMouse(y);
+        if (GYM_TAB.contains(x, y) || ELITE_TAB.contains(x, y)) {
+            boolean nextEliteTab = ELITE_TAB.contains(x, y);
+            if (nextEliteTab != eliteTab) {
                 playGuiClick();
+                eliteTab = nextEliteTab;
+            }
+            return true;
+        }
+        if (eliteTab) {
+            if (ELITE_ACTION.contains(x, y)) {
+                activateChallenge(ELITE);
                 return true;
             }
-            for (int index = 0; index < GymType.values().length; index++) {
-                int cardX = 16 + (index % COLUMNS) * (CARD_WIDTH + CARD_GAP);
-                int cardY = GRID_TOP + (index / COLUMNS) * ROW_HEIGHT - (int) Math.round(scrollOffset);
-                if (inside(x, y, 16, GRID_TOP, 277, SCROLL_TRACK_HEIGHT)
-                        && inside(x, y, cardX, cardY, CARD_WIDTH, CARD_HEIGHT)) {
-                    playGuiClick();
-                    if (menu.isUnlocked(index)) {
-                        pendingChallenge = index;
-                    } else if (menu.getDiskCount(index) > 0) {
-                        requestUnlock(index);
-                    }
+        } else if (MAX_SCROLL > 0 && TRACK.contains(x, y)) {
+            Rect thumb = thumbBounds();
+            scrollbarGrabOffset = thumb.contains(x, y) ? (int) y - thumb.y() : THUMB_HEIGHT / 2;
+            targetScrollOffset = scrollOffset;
+            if (!thumb.contains(x, y)) {
+                dragScrollbar(y);
+            }
+            return true;
+        } else if (GRID.contains(x, y)) {
+            for (int index = 0; index < GYMS.length; index++) {
+                if (cardBounds(index).contains(x, y)) {
+                    activateChallenge(index);
                     return true;
                 }
             }
-        } else if (inside(x, y, 43, 67, 234, 83)) {
-            playGuiClick();
-            int challenge = TrainingSimulatorMenu.ELITE_FOUR_BUTTON_ID;
-            if (menu.isUnlocked(challenge)) {
-                pendingChallenge = challenge;
-            } else if (menu.getCompletedCount() >= GymType.values().length
-                    && menu.getDiskCount(challenge) > 0) {
-                requestUnlock(challenge);
-            }
-            return true;
         }
-
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-        if (tab == Tab.GYMS && pendingChallenge < 0) {
-            double nextOffset = Mth.clamp(
-                    targetScrollOffset - scrollY * WHEEL_SCROLL_PIXELS,
-                    0.0D,
-                    maxScrollPixels()
-            );
-            if (Math.abs(nextOffset - targetScrollOffset) > 0.001D) {
-                targetScrollOffset = nextOffset;
-                return true;
-            }
+        if (pendingChallenge >= 0) {
+            return true;
+        }
+        if (!eliteTab && scrollbarGrabOffset < 0 && CONTENT.contains(mouseX - leftPos, mouseY - topPos)) {
+            targetScrollOffset = Mth.clamp(targetScrollOffset - scrollY * WHEEL_SCROLL_PIXELS, 0.0D, MAX_SCROLL);
+            return true;
         }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        if (button == 0 && draggingScroll && tab == Tab.GYMS && pendingChallenge < 0) {
-            updateScrollFromMouse((int) mouseY - topPos);
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && scrollbarGrabOffset >= 0) {
+            dragScrollbar(mouseY - topPos);
             return true;
         }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
@@ -200,250 +323,170 @@ public class TrainingSimulatorScreen extends AbstractContainerScreen<TrainingSim
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0 && draggingScroll) {
-            draggingScroll = false;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && scrollbarGrabOffset >= 0) {
+            scrollbarGrabOffset = -1;
             return true;
         }
-        return super.mouseReleased(mouseX, mouseY, button);
+        return pendingChallenge >= 0 || super.mouseReleased(mouseX, mouseY, button);
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (pendingChallenge >= 0 && keyCode == 256) {
-            pendingChallenge = -1;
+        if (pendingChallenge >= 0) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                dismissConfirmation();
+            }
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
-    private void drawPanel(GuiGraphics graphics) {
-        graphics.fill(leftPos, topPos, leftPos + PANEL_WIDTH, topPos + PANEL_HEIGHT, 0xF20A1420);
-        graphics.fill(leftPos + 2, topPos + 2, leftPos + PANEL_WIDTH - 2, topPos + 34, 0xFF102E43);
-        graphics.fill(leftPos + 2, topPos + 34, leftPos + PANEL_WIDTH - 2, topPos + 36, 0xFF21B9D6);
-        outline(graphics, 0, 0, PANEL_WIDTH, PANEL_HEIGHT, 0xFF55E6FF);
-        outline(graphics, 4, 4, PANEL_WIDTH - 8, PANEL_HEIGHT - 8, 0x8046AFC4);
-        graphics.fill(leftPos + 8, topPos + 12, leftPos + 12, topPos + 28, 0xFF48E4FF);
+    private ChallengeState challengeState(int challenge) {
+        if (challenge == ELITE && menu.getCompletedCount() < GYMS.length) {
+            return ChallengeState.LOCKED;
+        }
+        if (menu.isUnlocked(challenge)) {
+            return ChallengeState.CHALLENGE;
+        }
+        return menu.getDiskCount(challenge) > 0 ? ChallengeState.UNLOCK : ChallengeState.LOCKED;
     }
 
-    private void drawTabs(GuiGraphics graphics, int mouseX, int mouseY) {
-        drawTab(graphics, 68, 39, 82, text("tab.gyms"), tab == Tab.GYMS, mouseX, mouseY);
-        drawTab(graphics, 158, 39, 94, text("tab.elite_four"), tab == Tab.ELITE_FOUR, mouseX, mouseY);
-    }
-
-    private void drawTab(GuiGraphics graphics, int x, int y, int width, Component label, boolean selected, int mouseX, int mouseY) {
-        boolean hovered = inside(mouseX - leftPos, mouseY - topPos, x, y, width, 15);
-        int color = selected ? 0xFF167E9C : hovered ? 0xFF174B61 : 0xFF102B3C;
-        graphics.fill(leftPos + x, topPos + y, leftPos + x + width, topPos + y + 15, color);
-        outline(graphics, x, y, width, 15, selected ? 0xFF5AE9FF : 0xFF28677A);
-        graphics.drawCenteredString(font, label, leftPos + x + width / 2, topPos + y + 3, selected ? 0xFFFFFFFF : 0xFF9ECBD5);
-    }
-
-    private void drawGymGrid(GuiGraphics graphics, int mouseX, int mouseY) {
-        graphics.enableScissor(
-                leftPos + 16,
-                topPos + GRID_TOP,
-                leftPos + 293,
-                topPos + GRID_TOP + SCROLL_TRACK_HEIGHT
-        );
-        for (int index = 0; index < GymType.values().length; index++) {
-            int x = 16 + (index % COLUMNS) * (CARD_WIDTH + CARD_GAP);
-            int y = GRID_TOP + (index / COLUMNS) * ROW_HEIGHT - (int) Math.round(scrollOffset);
-            if (y + CARD_HEIGHT < GRID_TOP || y > GRID_TOP + SCROLL_TRACK_HEIGHT) {
-                continue;
+    private void activateChallenge(int challenge) {
+        switch (challengeState(challenge)) {
+            case CHALLENGE -> {
+                playGuiClick();
+                pendingChallenge = challenge;
             }
-            drawGymCard(graphics, index, x, y, mouseX, mouseY);
+            case UNLOCK -> {
+                playGuiClick();
+                sendMenuButton(TrainingSimulatorMenu.UNLOCK_BUTTON_OFFSET + challenge);
+            }
+            case LOCKED -> { }
         }
-        graphics.disableScissor();
-
-        graphics.fill(leftPos + SCROLL_TRACK_X, topPos + GRID_TOP, leftPos + SCROLL_TRACK_X + 4, topPos + GRID_TOP + SCROLL_TRACK_HEIGHT, 0xFF173543);
-        int thumbY = getScrollThumbY();
-        graphics.fill(leftPos + SCROLL_TRACK_X, topPos + thumbY, leftPos + SCROLL_TRACK_X + 4, topPos + thumbY + SCROLL_THUMB_HEIGHT, 0xFF50DDF5);
     }
 
-    private void drawGymCard(GuiGraphics graphics, int index, int x, int y, int mouseX, int mouseY) {
-        GymType type = GymType.values()[index];
-        boolean completed = menu.hasCompleted(index);
-        boolean unlocked = menu.isUnlocked(index);
-        boolean available = unlocked || menu.getDiskCount(index) > 0;
-        boolean hovered = inside(mouseX - leftPos, mouseY - topPos, x, y, CARD_WIDTH, CARD_HEIGHT);
-        int accent = typeColor(type);
-        graphics.fill(leftPos + x, topPos + y, leftPos + x + CARD_WIDTH, topPos + y + CARD_HEIGHT, hovered ? 0xFF173A4C : 0xFF102735);
-        graphics.fill(leftPos + x, topPos + y, leftPos + x + 4, topPos + y + CARD_HEIGHT, accent);
-        outline(graphics, x, y, CARD_WIDTH, CARD_HEIGHT, hovered ? 0xFF73EBFF : 0xFF285D70);
-
-        ItemStack disk = new ItemStack(CobbleBash.TRAINING_DISKS.get(type).get());
-        graphics.renderItem(disk, leftPos + x + 6, topPos + y + 4);
-        graphics.drawString(font, text("gym_name." + type.getId()), leftPos + x + 26, topPos + y + 5, 0xFFF2FAFC, false);
-        graphics.drawString(font, text("gym"), leftPos + x + 26, topPos + y + 16, 0xFF8ABCC8, false);
-        Component state = completed
-                ? text("completed").withStyle(ChatFormatting.GREEN)
-                : unlocked
-                ? text("unlocked").withStyle(ChatFormatting.GREEN)
-                : available
-                ? text("can_unlock").withStyle(ChatFormatting.AQUA)
-                : text("no_disc").withStyle(ChatFormatting.RED);
-        graphics.drawString(font, state, leftPos + x + 6, topPos + y + 28, 0xFFFFFFFF, false);
-        Component clears = text("clear_count", menu.getGymClearCount(index));
-        graphics.drawString(
-                font,
-                clears,
-                leftPos + x + CARD_WIDTH - 5 - font.width(clears),
-                topPos + y + 28,
-                0xFFD0EAF0,
-                false
-        );
+    private boolean canConfirm() {
+        return challengeState(pendingChallenge) == ChallengeState.CHALLENGE;
     }
 
-    private void drawEliteFour(GuiGraphics graphics, int mouseX, int mouseY) {
-        int x = 43;
-        int y = 67;
-        boolean unlocked = menu.getCompletedCount() >= GymType.values().length;
-        boolean challengeUnlocked = menu.isUnlocked(TrainingSimulatorMenu.ELITE_FOUR_BUTTON_ID);
-        boolean hovered = inside(mouseX - leftPos, mouseY - topPos, x, y, 234, 83);
-        graphics.fill(leftPos + x, topPos + y, leftPos + x + 234, topPos + y + 83, hovered ? 0xFF263B55 : 0xFF172A41);
-        graphics.fill(leftPos + x, topPos + y, leftPos + x + 5, topPos + y + 83, unlocked ? 0xFFFFC247 : 0xFF526372);
-        outline(graphics, x, y, 234, 83, hovered ? 0xFFFFD36A : 0xFF536F87);
-        graphics.renderItem(new ItemStack(CobbleBash.ELITE_FOUR_TRAINING_DISK.get()), leftPos + x + 14, topPos + y + 14);
-        graphics.drawString(font, text("elite_title"), leftPos + x + 39, topPos + y + 12, 0xFFFFE7A4, false);
-        int memberX = x + 14;
-        int memberY = y + 34;
-        for (int index = 0; index < EliteFourMember.ordered().size(); index++) {
-            EliteFourMember member = EliteFourMember.ordered().get(index);
-            int column = index % 2;
-            int row = index / 2;
-            graphics.drawString(
-                    font,
-                    text("elite_member." + member.getId()),
-                    leftPos + memberX + column * 106,
-                    topPos + memberY + row * 11,
-                    0xFFBBD0DD,
-                    false
-            );
+    private void confirmChallenge() {
+        if (canConfirm()) {
+            playGuiClick();
+            sendMenuButton(pendingChallenge);
+            pendingChallenge = -1;
         }
-        Component state = !unlocked
-                ? text("requires_gyms", menu.getCompletedCount(), GymType.values().length).withStyle(ChatFormatting.RED)
-                : challengeUnlocked
-                ? text("unlocked").withStyle(ChatFormatting.GREEN)
-                : menu.getDiskCount(TrainingSimulatorMenu.ELITE_FOUR_BUTTON_ID) > 0
-                ? text("can_unlock").withStyle(ChatFormatting.AQUA)
-                : text("no_elite_disc").withStyle(ChatFormatting.RED);
-        graphics.drawString(font, state, leftPos + x + 14, topPos + y + 62, 0xFFFFFFFF, false);
     }
 
-    private void drawStatusBar(GuiGraphics graphics) {
-        graphics.fill(leftPos + 16, topPos + 190, leftPos + 304, topPos + 216, 0xFF0C202D);
-        outline(graphics, 16, 190, 288, 26, 0xFF245D70);
-        graphics.drawString(font, text("completed_count", menu.getCompletedCount(), GymType.values().length), leftPos + 24, topPos + 195, 0xFF8FE8F5, false);
-        graphics.drawString(font, text("challenge_count", menu.getChallengesStarted()), leftPos + 160, topPos + 195, 0xFF8FE8F5, false);
-        Component active = menu.hasActiveChallenge()
-                ? text("active").withStyle(ChatFormatting.YELLOW)
-                : text("standby").withStyle(ChatFormatting.GRAY);
-        graphics.drawString(font, active, leftPos + 24, topPos + 206, 0xFFFFFFFF, false);
+    private void dismissConfirmation() {
+        playGuiClick();
+        pendingChallenge = -1;
     }
 
-    private void drawConfirmation(GuiGraphics graphics, int mouseX, int mouseY) {
-        graphics.pose().pushPose();
-        graphics.pose().translate(0.0F, 0.0F, 300.0F);
-        graphics.fill(leftPos + 1, topPos + 36, leftPos + PANEL_WIDTH - 1, topPos + PANEL_HEIGHT - 1, 0xD900080D);
-        int x = 59;
-        int y = 78;
-        int width = 202;
-        int height = 104;
-        graphics.fill(leftPos + x, topPos + y, leftPos + x + width, topPos + y + height, 0xFF102A3A);
-        outline(graphics, x, y, width, height, 0xFF56E3FA);
-        graphics.drawCenteredString(font, text("confirm_title"), leftPos + x + width / 2, topPos + y + 13, 0xFFFFFFFF);
-
-        Component target = pendingChallenge == TrainingSimulatorMenu.ELITE_FOUR_BUTTON_ID
-                ? text("elite_title")
-                : text("gym_target", text("gym_name." + GymType.values()[pendingChallenge].getId()));
-        graphics.drawCenteredString(font, target, leftPos + x + width / 2, topPos + y + 34, 0xFF8DEEFF);
-        graphics.drawCenteredString(font, text("confirm_enter"), leftPos + x + width / 2, topPos + y + 49, 0xFFC5D7DC);
-
-        drawDialogButton(graphics, 93, 155, 64, Component.translatable("gui.cancel"), true, mouseX, mouseY);
-        drawDialogButton(graphics, 163, 155, 64, text("enter"), canChallenge(pendingChallenge), mouseX, mouseY);
-        graphics.pose().popPose();
-    }
-
-    private void drawDialogButton(GuiGraphics graphics, int x, int y, int width, Component label, boolean enabled, int mouseX, int mouseY) {
-        boolean hovered = enabled && inside(mouseX - leftPos, mouseY - topPos, x, y, width, 20);
-        int color = !enabled ? 0xFF27323A : hovered ? 0xFF1A9DBB : 0xFF17637A;
-        graphics.fill(leftPos + x, topPos + y, leftPos + x + width, topPos + y + 20, color);
-        outline(graphics, x, y, width, 20, enabled ? 0xFF69E9FF : 0xFF48545A);
-        graphics.drawCenteredString(font, label, leftPos + x + width / 2, topPos + y + 6, enabled ? 0xFFFFFFFF : 0xFF77848A);
-    }
-
-    private boolean canChallenge(int challenge) {
-        if (challenge == TrainingSimulatorMenu.ELITE_FOUR_BUTTON_ID) {
-            return menu.getCompletedCount() >= GymType.values().length
-                    && menu.isUnlocked(challenge);
-        }
-        return challenge >= 0 && challenge < GymType.values().length
-                && menu.isUnlocked(challenge);
-    }
-
-    private int maxScrollPixels() {
-        int totalRows = (GymType.values().length + COLUMNS - 1) / COLUMNS;
-        return Math.max(0, (totalRows - VISIBLE_ROWS) * ROW_HEIGHT);
-    }
-
-    private int getScrollThumbY() {
-        if (maxScrollPixels() == 0) {
-            return GRID_TOP;
-        }
-        return GRID_TOP + Math.round(
-                (float) ((SCROLL_TRACK_HEIGHT - SCROLL_THUMB_HEIGHT) * scrollOffset / maxScrollPixels())
-        );
-    }
-
-    private void updateScrollFromMouse(int mouseY) {
-        int travel = SCROLL_TRACK_HEIGHT - SCROLL_THUMB_HEIGHT;
-        int thumbTop = Mth.clamp(mouseY - GRID_TOP - SCROLL_THUMB_HEIGHT / 2, 0, travel);
-        double offset = Mth.clamp(thumbTop * maxScrollPixels() / (double) travel, 0.0D, maxScrollPixels());
-        scrollOffset = offset;
-        targetScrollOffset = offset;
-    }
-
-    private void updateSmoothScroll() {
-        long now = System.nanoTime();
-        if (lastRenderNanos == 0L) {
-            lastRenderNanos = now;
-            return;
-        }
-        double elapsedSeconds = Math.min(0.05D, (now - lastRenderNanos) / 1_000_000_000.0D);
-        lastRenderNanos = now;
-        if (draggingScroll) {
-            return;
-        }
-        double blend = 1.0D - Math.exp(-SCROLL_RESPONSE * elapsedSeconds);
-        scrollOffset += (targetScrollOffset - scrollOffset) * blend;
-        if (Math.abs(targetScrollOffset - scrollOffset) < 0.05D) {
-            scrollOffset = targetScrollOffset;
-        }
+    private void sendMenuButton(int id) {
+        minecraft.gameMode.handleInventoryButtonClick(menu.containerId, id);
     }
 
     private void playGuiClick() {
         minecraft.getSoundManager().play(SimpleSoundInstance.forUI(GUI_CLICK, 1.0F));
     }
 
-    private void requestUnlock(int challenge) {
-        minecraft.gameMode.handleInventoryButtonClick(
-                menu.containerId,
-                TrainingSimulatorMenu.UNLOCK_BUTTON_OFFSET + challenge
-        );
+    private Rect thumbBounds() {
+        int travel = TRACK.height() - THUMB_HEIGHT;
+        int y = TRACK.y() + (int) Math.round(travel * scrollOffset / MAX_SCROLL);
+        return new Rect(TRACK.x(), y, TRACK.width(), THUMB_HEIGHT);
     }
 
-    private void outline(GuiGraphics graphics, int x, int y, int width, int height, int color) {
-        graphics.fill(leftPos + x, topPos + y, leftPos + x + width, topPos + y + 1, color);
-        graphics.fill(leftPos + x, topPos + y + height - 1, leftPos + x + width, topPos + y + height, color);
-        graphics.fill(leftPos + x, topPos + y, leftPos + x + 1, topPos + y + height, color);
-        graphics.fill(leftPos + x + width - 1, topPos + y, leftPos + x + width, topPos + y + height, color);
+    private void dragScrollbar(double mouseY) {
+        int travel = TRACK.height() - THUMB_HEIGHT;
+        double fraction = Mth.clamp((mouseY - TRACK.y() - scrollbarGrabOffset) / travel, 0.0D, 1.0D);
+        targetScrollOffset = scrollOffset = fraction * MAX_SCROLL;
     }
 
-    private static boolean inside(int mouseX, int mouseY, int x, int y, int width, int height) {
-        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
+    private void updateSmoothScroll() {
+        long now = System.nanoTime();
+        if (lastRenderNanos != 0 && scrollbarGrabOffset < 0) {
+            double elapsed = Math.min(0.05D, (now - lastRenderNanos) / 1_000_000_000.0D);
+            scrollOffset += (targetScrollOffset - scrollOffset) * (1.0D - Math.exp(-SCROLL_RESPONSE * elapsed));
+            if (Math.abs(targetScrollOffset - scrollOffset) < 0.05D) {
+                scrollOffset = targetScrollOffset;
+            }
+        }
+        lastRenderNanos = now;
     }
 
-    private static MutableComponent text(String path, Object... arguments) {
+    private void drawFrame(GuiGraphics graphics, Rect rect) {
+        fill(graphics, rect.x() + 2, rect.y() + 2, rect.width(), rect.height(), 0x70000000);
+        fill(graphics, rect, BORDER);
+        fill(graphics, rect.x() + 1, rect.y() + 1, rect.width() - 2, rect.height() - 4, SURFACE);
+        fill(graphics, rect.x() + 1, rect.y() + 1, rect.width() - 2, 1, 0xFF777879);
+        fill(graphics, rect.x() + 1, rect.bottom() - 3, rect.width() - 2, 2, HEADER);
+    }
+
+    private void drawWell(GuiGraphics graphics, Rect rect) {
+        fill(graphics, rect, BORDER);
+        fill(graphics, rect.x() + 1, rect.y() + 1, rect.width() - 2, rect.height() - 2, WELL);
+        fill(graphics, rect.x() + 1, rect.bottom() - 1, rect.width() - 2, 1, DIVIDER);
+    }
+
+    private void drawButton(GuiGraphics graphics, Rect rect, Component label, ButtonStyle style, int mouseX, int mouseY) {
+        drawButtonFace(graphics, rect, style, rect.contains(mouseX, mouseY));
+        centeredLabel(graphics, label, rect, rect.y() + (rect.height() - font.lineHeight - 2) / 2,
+                style.textColor, style == ButtonStyle.PRIMARY || style == ButtonStyle.NEUTRAL);
+    }
+
+    private void drawButtonFace(GuiGraphics graphics, Rect rect, ButtonStyle style, boolean hovered) {
+        boolean highlighted = hovered && style != ButtonStyle.DISABLED;
+        fill(graphics, rect, highlighted ? WHITE : BORDER);
+        fill(graphics, rect.x() + 1, rect.y() + 1, rect.width() - 2, rect.height() - 2, style.shadow);
+        fill(graphics, rect.x() + 1, rect.y() + 1, rect.width() - 2, rect.height() - 4,
+                highlighted ? style.hover : style.face);
+        fill(graphics, rect.x() + 1, rect.y() + 1, rect.width() - 2, 1, style.highlight);
+    }
+
+    private void drawCheck(GuiGraphics graphics, int x, int y, int color) {
+        fill(graphics, x, y + 2, 1, 2, color);
+        fill(graphics, x + 1, y + 3, 1, 2, color);
+        fill(graphics, x + 2, y + 2, 1, 2, color);
+        fill(graphics, x + 3, y + 1, 1, 2, color);
+        fill(graphics, x + 4, y, 1, 2, color);
+    }
+
+    private void drawCross(GuiGraphics graphics, int x, int y) {
+        for (int pixel = 0; pixel < 6; pixel++) {
+            fill(graphics, x + pixel, y + pixel, 1, 1, WHITE);
+            fill(graphics, x + 5 - pixel, y + pixel, 1, 1, WHITE);
+        }
+    }
+
+    private void label(GuiGraphics graphics, Component text, int x, int y, int maxWidth, int color, boolean shadow) {
+        int textWidth = font.width(text);
+        if (textWidth <= maxWidth) {
+            graphics.drawString(font, text, leftPos + x, topPos + y, color, shadow);
+            return;
+        }
+
+        float scale = (float) maxWidth / textWidth;
+        graphics.pose().pushPose();
+        graphics.pose().translate(leftPos + x, topPos + y + (1 - scale) * font.lineHeight / 2, 0);
+        graphics.pose().scale(scale, scale, 1);
+        graphics.drawString(font, text, 0, 0, color, shadow);
+        graphics.pose().popPose();
+    }
+
+    private void centeredLabel(GuiGraphics graphics, Component text, Rect rect, int y, int color, boolean shadow) {
+        int textWidth = Math.min(font.width(text), rect.width() - 8);
+        label(graphics, text, rect.x() + (rect.width() - textWidth) / 2, y, textWidth, color, shadow);
+    }
+
+    private void fill(GuiGraphics graphics, Rect rect, int color) {
+        fill(graphics, rect.x(), rect.y(), rect.width(), rect.height(), color);
+    }
+
+    private void fill(GuiGraphics graphics, int x, int y, int width, int height, int color) {
+        graphics.fill(leftPos + x, topPos + y, leftPos + x + width, topPos + y + height, color);
+    }
+
+    private static Component text(String path, Object... arguments) {
         return Component.translatable(TRANSLATION_PREFIX + path, arguments);
     }
 
@@ -458,16 +501,60 @@ public class TrainingSimulatorScreen extends AbstractContainerScreen<TrainingSim
             case "ice", "flying" -> 0xFF82D7E8;
             case "rock", "ground" -> 0xFFB78B58;
             case "dragon" -> 0xFF6677D8;
-            case "dark" -> 0xFF59616E;
+            case "dark" -> 0xFF8C8D90;
             case "steel", "normal" -> 0xFFA7B2B8;
             case "bug" -> 0xFF93B83F;
             case "fighting" -> 0xFFC35B4D;
-            default -> 0xFF5BD4E8;
+            default -> MUTED;
         };
     }
 
-    private enum Tab {
-        GYMS,
-        ELITE_FOUR
+    private record Rect(int x, int y, int width, int height) {
+        int right() {
+            return x + width;
+        }
+
+        int bottom() {
+            return y + height;
+        }
+
+        boolean contains(double mouseX, double mouseY) {
+            return mouseX >= x && mouseX < right() && mouseY >= y && mouseY < bottom();
+        }
+    }
+
+    private enum ChallengeState {
+        CHALLENGE("challenge", GREEN),
+        UNLOCK("unlock", GOLD),
+        LOCKED("locked", DIM);
+
+        private final String label;
+        private final int color;
+
+        ChallengeState(String label, int color) {
+            this.label = label;
+            this.color = color;
+        }
+    }
+
+    private enum ButtonStyle {
+        PRIMARY(0xFF3C8527, 0xFF52A535, 0xFF639D52, 0xFF1D4D13, WHITE),
+        SECONDARY(0xFFD0D1D4, 0xFFF4F6F9, 0xFFE6E8EB, DIVIDER, BORDER),
+        NEUTRAL(SURFACE, DIVIDER, 0xFF6D6D6E, HEADER, WHITE),
+        DISABLED(HEADER, HEADER, 0xFF48494A, WELL, DIM);
+
+        private final int face;
+        private final int hover;
+        private final int highlight;
+        private final int shadow;
+        private final int textColor;
+
+        ButtonStyle(int face, int hover, int highlight, int shadow, int textColor) {
+            this.face = face;
+            this.hover = hover;
+            this.highlight = highlight;
+            this.shadow = shadow;
+            this.textColor = textColor;
+        }
     }
 }

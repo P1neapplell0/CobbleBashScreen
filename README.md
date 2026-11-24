@@ -1,18 +1,18 @@
 # CobbleBash Screen
 
-CobbleBash Screen is a NeoForge add-on for CobbleBash. It replaces the Training Simulator interaction with a compact, technology-themed screen without replacing CobbleBash classes, registrations, or resources.
+CobbleBash Screen is a NeoForge add-on for CobbleBash. It replaces the Training Simulator interaction with a compact, Ore UI-inspired screen without replacing CobbleBash classes, registrations, or resources.
 
 ## Features
 
 - Separate tabs for all 18 gyms and the Elite Four
 - Nine gym cards visible at once with smooth continuous scrolling
 - Permanent per-player challenge unlocks using the original CobbleBash Training Discs
-- Separate unlock and challenge confirmation interactions
+- Disc-based unlocks and a separate challenge confirmation dialog
 - Elite Four access remains locked behind completion of all 18 gyms
 - Per-gym successful clear counts and total challenges started
 - Persistent player progress backed by a NeoForge data attachment
 - Cobblemon GUI click and PC unlock sounds
-- English and Simplified Chinese interface translations, including a Simplified Chinese translation for CobbleBash
+- Training Simulator translations in 11 Minecraft locales
 
 ## Requirements
 
